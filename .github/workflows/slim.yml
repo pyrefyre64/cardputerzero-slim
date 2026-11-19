@@ -79,12 +79,21 @@ jobs:
       - name: Verify image contents
         run: sudo ./tools/verify-image.sh "${{ steps.img.outputs.raw }}"
 
-      - name: Package list
+      - name: Package list and library check
         run: |
           sudo mkdir -p /mnt/cz && OFF=$(sudo partx -g -o START -n 2 "${{ steps.img.outputs.raw }}")
           sudo mount -o ro,loop,offset=$((OFF*512)) "${{ steps.img.outputs.raw }}" /mnt/cz
           dpkg-query --admindir=/mnt/cz/var/lib/dpkg -W -f='${Package}\t${Version}\n' > packages.tsv
-          wc -l packages.tsv; sudo umount /mnt/cz
+          wc -l packages.tsv
+          # Every launcher program must find its libraries (the applaunch package under-declares them).
+          missing=0
+          for b in /mnt/cz/usr/share/APPLaunch/bin/*; do
+            out=$(sudo chroot /mnt/cz ldd "${b#/mnt/cz}" 2>&1 | grep "not found" || true)
+            if [ -n "$out" ]; then echo "::error::${b#/mnt/cz}: $out"; missing=1; fi
+          done
+          sudo umount /mnt/cz
+          [ "$missing" = 0 ] && echo "All launcher programs resolve their libraries"
+          exit $missing
 
       - name: Upload image
         uses: actions/upload-artifact@v4
