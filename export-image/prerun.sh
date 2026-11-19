@@ -24,7 +24,7 @@ ROOT_PART_START=$((BOOT_PART_START + BOOT_PART_SIZE))
 # of the stage being exported ("-lite" for stage2).
 FIXED_SIZE=1
 case "${IMG_SUFFIX:-}" in
-	*-lite*) FIXED_SIZE=0 ;;
+	*-lite*) [ "${FIXED_SIZE_LITE:-0}" = "1" ] || FIXED_SIZE=0 ;;
 esac
 
 if [ -n "${IMAGE_TOTAL_SIZE:-}" ] && [ "$FIXED_SIZE" = "1" ]; then

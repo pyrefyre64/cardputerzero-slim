@@ -1,0 +1,92 @@
+name: Build slim CardputerZero image
+
+# Stage 2 (Lite) + stage2/06-slim, at the product's fixed 14.8 GiB size.
+# No secrets go into this image: anyone signed in to GitHub can download a public repo's artifacts.
+# Set the username, password and Wi-Fi in the imager's settings step when flashing.
+
+on:
+  push:
+    branches: [slim]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slim:
+    name: Build slim image (arm64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coreutils quilt parted debootstrap zerofree zip \
+            dosfstools libarchive-tools libcap2-bin grep rsync xz-utils file git curl bc \
+            gpg pigz xxd arch-test qemu-user-static kmod binfmt-support e2fsprogs
+
+      - name: Configure slim build
+        run: |
+          cat > config <<'CONFIG'
+          IMG_NAME=cardputerzero-slim-trixie-arm64
+          RELEASE=trixie
+          DEPLOY_COMPRESSION=xz
+          TARGET_HOSTNAME=cardputerzero
+          FIRST_USER_NAME=pi
+          FIRST_USER_PASS=raspberry
+          DISABLE_FIRST_BOOT_USER_RENAME=1
+          ENABLE_SSH=1
+          PUBKEY_SSH_FIRST_USER="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHCwBlXioPQHkOcxPM55Fq/ofWk7Fj8ovNFysmz7cv+1 bb@nix1 cardputerzero"
+          LOCALE_DEFAULT=en_US.UTF-8
+          KEYBOARD_KEYMAP=us
+          KEYBOARD_LAYOUT="English (US)"
+          TIMEZONE_DEFAULT=America/Chicago
+          IMAGE_TOTAL_SIZE=15888023552
+          FIXED_SIZE_LITE=1
+          CONFIG
+          sed -i 's/^          //' config
+          touch stage3/SKIP stage4/SKIP stage5/SKIP
+          touch stage3/SKIP_IMAGES stage4/SKIP_IMAGES stage5/SKIP_IMAGES
+
+      - name: Build slim image
+        run: sudo GITHUB_TOKEN="${GITHUB_TOKEN}" XZ_DEFAULTS="-T0" ./build.sh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Fix deploy permissions
+        run: sudo chown -R $(id -u):$(id -g) deploy/
+
+      - name: Find image
+        id: img
+        run: |
+          FILE=$(find deploy/ -name "*-lite.img.xz" | head -1)
+          ls -lh "$FILE"
+          sha256sum "$FILE" | tee "$FILE.sha256"
+          xz -dk "$FILE"
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+          echo "raw=${FILE%.xz}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify image contents
+        run: sudo ./tools/verify-image.sh "${{ steps.img.outputs.raw }}"
+
+      - name: Package list
+        run: |
+          sudo mkdir -p /mnt/cz && OFF=$(sudo partx -g -o START -n 2 "${{ steps.img.outputs.raw }}")
+          sudo mount -o ro,loop,offset=$((OFF*512)) "${{ steps.img.outputs.raw }}" /mnt/cz
+          dpkg-query --admindir=/mnt/cz/var/lib/dpkg -W -f='${Package}\t${Version}\n' > packages.tsv
+          wc -l packages.tsv; sudo umount /mnt/cz
+
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputerzero-slim-${{ github.sha }}
+          path: |
+            ${{ steps.img.outputs.path }}
+            ${{ steps.img.outputs.path }}.sha256
+            packages.tsv
+          compression-level: 0
+          retention-days: 30

@@ -206,6 +206,8 @@ export COMPRESSION_LEVEL=${COMPRESSION_LEVEL:-6}
 # aborts the build if the rootfs no longer fits; empty keeps upstream's
 # "size to the rootfs contents" behaviour (used by the lite check build).
 export IMAGE_TOTAL_SIZE="${IMAGE_TOTAL_SIZE:-}"
+# Set to 1 to give a lite build the fixed IMAGE_TOTAL_SIZE layout as well (slim build).
+export FIXED_SIZE_LITE="${FIXED_SIZE_LITE:-0}"
 
 # Bytes per inode for the root filesystem.  32768 yields ~469k inodes on the
 # fixed 14.8 GiB image; the current rootfs uses ~141k.

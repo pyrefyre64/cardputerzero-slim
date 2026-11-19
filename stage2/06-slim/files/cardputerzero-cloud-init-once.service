@@ -1,0 +1,11 @@
+[Unit]
+Description=Turn off cloud-init after the first boot has applied the imager settings
+After=cloud-final.service
+ConditionPathExists=!/etc/cloud/cloud-init.disabled
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/touch /etc/cloud/cloud-init.disabled
+
+[Install]
+WantedBy=multi-user.target
